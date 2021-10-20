@@ -569,7 +569,8 @@ class PGsOED(SOED):
                 self.critic_optimizer.zero_grad()
                 loss.backward()
                 self.critic_optimizer.step()
-                # print(_, (torch.norm(y_critic - g_critic) / torch.norm(g_critic)).item())
+                # print(_, (torch.norm(y_critic - g_critic) / 
+                #           torch.norm(g_critic)).item())
 
             # BP to get grad_d Q(x, k)
             if on_policy:

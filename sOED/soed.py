@@ -670,8 +670,8 @@ class SOED(object):
         kld = 0
         if stage == self.n_stage and xb is not None:
             kld = np.sum(xb[:, -1] * 
-                         (np.log(xb[:, -1] + 1e-32) 
-                          - np.log(self.init_xb[:, -1] + 1e-32))) * self.dgrid
+                         (np.log(xb[:, -1] + 1e-32) - 
+                          np.log(self.init_xb[:, -1] + 1e-32))) * self.dgrid
         return nkld_reward + kld
 
     def get_total_reward(self, d_hist, y_hist, return_reward_hist=False):

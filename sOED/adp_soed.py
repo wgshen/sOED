@@ -264,13 +264,13 @@ class ADPsOED(SOED):
         basic_features = np.zeros(self.n_basic_feature + self.n_xp)
         basic_features[self.n_basic_feature:] = xp
         mean = np.sum(xb[:, 0] * xb[:, 1] * self.dgrid)
-        logvar = np.log(np.sum((xb[:, 0] - mean) ** 2 
-                               * xb[:, 1] 
-                               * self.dgrid))
+        logvar = np.log(np.sum((xb[:, 0] - mean) ** 2 * 
+                               xb[:, 1] * 
+                               self.dgrid))
         var = np.exp(logvar)
-        logm4 = np.log(np.sum((xb[:, 0] - mean) ** 4 
-                              * xb[:, 1] 
-                              * self.dgrid))
+        logm4 = np.log(np.sum((xb[:, 0] - mean) ** 4 * 
+                              xb[:, 1] * 
+                              self.dgrid))
         basic_features[0:2] = np.array([mean, logvar])
         if self.n_basic_feature>2: basic_features[2] = var
         if self.n_basic_feature>3: basic_features[3] = logm4
@@ -542,8 +542,8 @@ class ADPsOED(SOED):
                              d.reshape(1, -1),
                              xp.reshape(1, -1))
                 y = np.random.normal(G + self.noise_loc,
-                                     self.noise_b_s 
-                                     + self.noise_r_s * np.abs(G))
+                                     self.noise_b_s + 
+                                     self.noise_r_s * np.abs(G))
                 ys_hist[i, k] = y
                 # Get reward.
                 reward = self.get_reward(k, xb, xp, d, y)
@@ -659,8 +659,8 @@ class ADPsOED(SOED):
                 and r_explore <= 1), (
                "r_explore should be a float between 0 and 1.")
         memory_gb = (8 * n_traj * self.n_stage * 
-                     self.n_grid ** self.n_param 
-                     * (self.n_param + 1) // 1000000000)
+                     self.n_grid ** self.n_param * 
+                     (self.n_param + 1) // 1000000000)
         if memory_gb > 1:
             print("Warning! The memory required to store belief states ", 
                   "exceeds 1GB. Recommend to set store_belief_state=False")
