@@ -510,7 +510,7 @@ class ADPsOED(SOED):
             xbs_hist = np.zeros((n_traj, self.n_stage, *self.init_xb.shape))
         else:
             xbs_hist = None
-        xps_hist = np.empty((n_traj, self.n_stage + 1, self.n_xp), dtype=object)
+        xps_hist = np.zeros((n_traj, self.n_stage + 1, self.n_xp))
         features_hist = np.zeros((n_traj, self.n_stage - 1, self.n_feature))
         rewards_hist = np.zeros((n_traj, self.n_stage + 1))
         n_total = self.n_stage * n_traj

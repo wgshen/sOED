@@ -148,6 +148,8 @@ class PGsOED(SOED):
 
     Methods
     -------
+    initialize()
+        Initialize sOED.
     initialize_actor(), initialize_policy()
         Initialize the actor network. These two functions are equivalent.
     initialize_critic()
@@ -164,9 +166,12 @@ class PGsOED(SOED):
         Form the inputs of actor network.
     form_critic_input()
         Form the inputs of critic network.
+    get_designs()
+        Get the design given sequences of historical designs and observations 
+        by running the actor network.
     get_design()
-        Get the design given historical designs and observations by running the
-        actor network.
+        Get a single design given a sequence of historical designs and 
+        observations by running the actor network.
     get_action_value()
         Get the action value (Q-value) given historical designs, observations,
         and current design.
@@ -208,6 +213,8 @@ class PGsOED(SOED):
                                  (self.n_stage - 1) * (self.n_obs + 
                                                        self.n_design))
         self.critic_input_dimn = self.actor_input_dimn + self.n_design
+        self.actor_dimns = actor_dimns
+        self.critic_dimns = critic_dimns
         self.initialize()
 
         self.initialize_policy = self.initialize_actor
@@ -243,6 +250,7 @@ class PGsOED(SOED):
         self.actor_net = Net(actor_dimns, nn.ReLU(), self.design_cons)
         self.update = 0
         self.actor_optimizer = None
+        self.actor_lr_scheduler = None
 
     def initialize_critic(self, critic_dimns=None):
         """
@@ -269,7 +277,8 @@ class PGsOED(SOED):
         self.critic_net = Net(critic_dimns, nn.ReLU(), 
                               np.array([[-np.inf, np.inf]]))  
         self.update = 0
-        self.critic_optimizer = None     
+        self.critic_optimizer = None  
+        self.critic_lr_scheduler = None   
 
     def load_actor(self, net, optimizer=None):
         """
@@ -383,19 +392,19 @@ class PGsOED(SOED):
         X[:, -self.n_design:] = torch.from_numpy(ds).float()
         return X
 
-    def get_design(self, stage=0, ds_hist=None, ys_hist=None):
+    def get_designs(self, stage=0, ds_hist=None, ys_hist=None):
         """
-        A function to get the design by running the policy network.
+        A function to get designs by running the policy network.
 
         Parameters
         ----------
         stage : int, optional(default=0)
             The stage index. 0 <= stage <= n_stage - 1.
-        ds_hist : numpy.ndarray of size (n_traj or 1, stage, n_design)
-                  , optional(default=None)
+        ds_hist : numpy.ndarray of size (n_traj or 1, stage, n_design),
+                  optional(default=None)
             n_traj sequences of designs before stage "stage".
-        ys_hist : numpy.ndarray of size (n_traj or 1, stage, n_obs)
-                  , optional(default=None)
+        ys_hist : numpy.ndarray of size (n_traj or 1, stage, n_obs),
+                  optional(default=None)
             n_traj sequences of observations before stage "stage". 
 
         Returns
@@ -410,6 +419,33 @@ class PGsOED(SOED):
         X = self.form_actor_input(stage, ds_hist, ys_hist)
         designs = self.actor_net(X).detach().double().numpy()
         return designs
+
+    def get_design(self, stage=0, d_hist=None, y_hist=None):
+        """
+        A function to get a single design by running the policy network.
+
+        Parameters
+        ----------
+        stage : int, optional(default=0)
+            The stage index. 0 <= stage <= n_stage - 1.
+        d_hist : numpy.ndarray of size (stage, n_design),
+                 optional(default=None)
+            A sequence of designs before stage "stage".
+        y_hist : numpy.ndarray of size (stage, n_obs), 
+                 optional(default=None)
+            A sequence of observations before stage "stage". 
+
+        Returns
+        -------
+        A numpy.ndarry of size (n_design) which is the design.
+        """
+        if d_hist is None:
+            d_hist = np.empty((0, self.n_design))
+        if y_hist is None:
+            y_hist = np.empty((0, self.n_obs))
+        return self.get_designs(stage,
+                                d_hist.reshape(1, -1, self.n_design),
+                                y_hist.reshape(1, -1, self.n_obs)).reshape(-1)
 
     def get_action_value(self, stage, ds_hist, ys_hist, ds):
         """
@@ -437,8 +473,10 @@ class PGsOED(SOED):
 
     def soed(self, n_update=100, n_traj=1000, 
              actor_optimizer=None,
+             actor_lr_scheduler=None,
              n_critic_update=30,
              critic_optimizer=None,
+             critic_lr_scheduler=None,
              design_noise_scale=None, design_noise_decay=0.99,
              on_policy=True):
         """
@@ -455,6 +493,10 @@ class PGsOED(SOED):
             The optimizer for the actor network. Example:
             torch.optim.SGD(<OBJECT INSTANCE NAME>.actor_net.parameters(),
                             lr=0.01)
+        actor_lr_scheduler : a learning rate scheduler of 
+                             torch.optim.lr_scheduler, optional(default=None)
+            The learning rate scheduler for the actor optimizer. Example:
+            torch.optim.lr_scheduler.ExponentialLR(actor_optimizer, gamma=0.99)
         n_critic_update : int, optional(default=30)
             The number of updates to train the critic network within each policy
             update.
@@ -462,6 +504,10 @@ class PGsOED(SOED):
             The optimizer for the critic network. Example:
             torch.optim.SGD(<OBJECT INSTANCE NAME>.critic_net.parameters(),
                             lr=0.01)
+        critic_lr_scheduler : a learning rate scheduler of 
+                              torch.optm.lr_scheduler, optional(default=None)
+            The learning rate scheduler for the critic optimizer. Example:
+            torch.optim.lr_scheduler.ExponentialLR(critic_optimizer, gamma=0.99)
         design_noise_scale : int, list, tuple or numpy.ndarray of size 
                              (n_design), optional(default=None)
             The scale of additive exploration Gaussian noise on each dimension 
@@ -491,15 +537,27 @@ class PGsOED(SOED):
         if actor_optimizer is None:
             if self.actor_optimizer is None:
                 self.actor_optimizer = optim.SGD(self.actor_net.parameters(),
-                                                 lr=0.001)
+                                                 lr=0.1)
         else:
             self.actor_optimizer = actor_optimizer
+        if actor_lr_scheduler is None:
+            if self.actor_lr_scheduler is None:
+                self.actor_lr_scheduler = optim.lr_scheduler.ExponentialLR(
+                    self.actor_optimizer, gamma=0.98)
+        else:
+            self.actor_lr_scheduler = actor_lr_scheduler
         if critic_optimizer is None:
             if self.critic_optimizer is None:
                 self.critic_optimizer = optim.Adam(self.critic_net.parameters(),
-                                                   lr=0.0001)
+                                                   lr=0.01)
         else:
             self.critic_optimizer = critic_optimizer
+        if critic_lr_scheduler is None:
+            if self.critic_lr_scheduler is None:
+                self.critic_lr_scheduler = optim.lr_scheduler.ExponentialLR(
+                    self.critic_optimizer, gamma=0.98)
+        else:
+            self.critic_lr_scheduler = critic_lr_scheduler
         if design_noise_scale is None:
             if self.design_noise_scale is None:
                 self.design_noise_scale = (self.design_cons[:, 1] - 
@@ -571,6 +629,7 @@ class PGsOED(SOED):
                 self.critic_optimizer.step()
                 # print(_, (torch.norm(y_critic - g_critic) / 
                 #           torch.norm(g_critic)).item())
+            self.critic_lr_scheduler.step()
 
             # BP to get grad_d Q(x, k)
             if on_policy:
@@ -589,6 +648,7 @@ class PGsOED(SOED):
             self.actor_optimizer.zero_grad()
             output.backward()
             self.actor_optimizer.step()
+            self.actor_lr_scheduler.step()
 
             self.update += 1
             self.design_noise_scale *= design_noise_decay
@@ -659,8 +719,7 @@ class PGsOED(SOED):
         else:
             xbs = None
         # Store n_stage + 1 physical states.
-        xps_hist = np.empty((n_traj, self.n_stage + 1, self.n_xp), 
-                            dtype=object)
+        xps_hist = np.zeros((n_traj, self.n_stage + 1, self.n_xp))
         xps_hist[:, 0] = self.init_xp
         rewards_hist = np.zeros((n_traj, self.n_stage + 1))
         progress_points = np.rint(np.linspace(0, n_traj - 1, 30))
@@ -668,9 +727,9 @@ class PGsOED(SOED):
         for k in range(self.n_stage + 1):
             if k < self.n_stage:
                 # Get clean designs.
-                dcs = self.get_design(stage=k,
-                                      ds_hist=ds_hist[:, :k],
-                                      ys_hist=ys_hist[:, :k])
+                dcs = self.get_designs(stage=k,
+                                       ds_hist=ds_hist[:, :k],
+                                       ys_hist=ys_hist[:, :k])
                 dcs_hist[:, k, :] = dcs
                 # Add design noise for exploration.
                 ds = np.random.normal(loc=dcs,
