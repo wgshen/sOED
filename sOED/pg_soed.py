@@ -145,6 +145,9 @@ class PGsOED(SOED):
         The dimensions of hidden layers of actor (policy) network.
     critic_dimns : list, tuple or numpy.ndarray, optional(default=None)
         The dimensions of hidden layers of critic (action value function) net.
+    double_precision : bool, optional(default=False)
+        Whether use double precision or single precison for the pytorch network,
+        single precision is sufficiently accurate.
 
     Methods
     -------
@@ -192,15 +195,14 @@ class PGsOED(SOED):
     "self._n_stage", and use @property to make it indirectly accessible.
     Allow users to use gpu to accelerate the NN computation. It is not important
     in this version, because the NN is small and using cpu is fast enough.
-    Allow users to use double precision in the NN. However, single precision is 
-    accurate enough for sOED.
     """
     def __init__(self, model_fun, 
                  n_stage, n_param, n_design, n_obs, 
                  prior_info, design_bounds, noise_info, 
                  reward_fun=None, phys_state_info=None,
                  n_grid=50, post_rvs_method="MCMC", random_state=None,
-                 actor_dimns=None, critic_dimns=None):
+                 actor_dimns=None, critic_dimns=None,
+                 double_precision=False):
         super().__init__(model_fun, n_stage, n_param, n_design, n_obs, 
                          prior_info, design_bounds, noise_info, 
                          reward_fun, phys_state_info,
@@ -208,6 +210,14 @@ class PGsOED(SOED):
         if random_state is None:
             random_state = np.random.randint(1e6)
         torch.manual_seed(random_state)
+
+        assert isinstance(double_precision, bool), (
+            "double_precision should either be True or False.")
+        if double_precision:
+            self.dtype = torch.float64
+        else:
+            self.dtype = torch.float32
+
         # Initialize the actor (policy) network and critic network.
         self.actor_input_dimn = (self.n_stage + 
                                  (self.n_stage - 1) * (self.n_obs + 
@@ -247,7 +257,9 @@ class PGsOED(SOED):
         actor_dimns = np.append(np.append(self.actor_input_dimn, 
                                           actor_dimns), 
                                 output_dimn)
-        self.actor_net = Net(actor_dimns, nn.ReLU(), self.design_bounds)
+        self.actor_net = Net(actor_dimns, 
+                             nn.ReLU(), 
+                             self.design_bounds).to(self.dtype)
         self.update = 0
         self.actor_optimizer = None
         self.actor_lr_scheduler = None
@@ -274,8 +286,9 @@ class PGsOED(SOED):
         critic_dimns = np.append(np.append(self.critic_input_dimn, 
                                            critic_dimns), 
                                  output_dimn)
-        self.critic_net = Net(critic_dimns, nn.ReLU(), 
-                              np.array([[-np.inf, np.inf]]))  
+        self.critic_net = Net(critic_dimns, 
+                              nn.ReLU(), 
+                              np.array([[-np.inf, np.inf]])).to(self.dtype)
         self.update = 0
         self.critic_optimizer = None  
         self.critic_lr_scheduler = None   
@@ -293,13 +306,14 @@ class PGsOED(SOED):
             An optimizer corresponding to net.
         """
         try:
-            output = net(torch.zeros(1, self.actor_input_dimn).float())
+            net = net.to(self.dtype)
+            output = net(torch.zeros(1, self.actor_input_dimn).to(self.dtype))
             assert output.shape[1] == self.n_design, (
                    "Output dimension should be {}.".format(self.n_design))
             self.actor_net = net
         except:
-            print("Actor network should be single precision "
-                  "with input dimension {}.".format(self.actor_input_dimn))
+            print("Actor network should has "
+                  "input dimension {}.".format(self.actor_input_dimn))
         self.actor_optimizer = optimizer
         self.update = 0
 
@@ -316,13 +330,14 @@ class PGsOED(SOED):
             An optimizer corresponding to net.
         """
         try:
-            output = net(torch.zeros(1, self.critic_input_dimn).float())
+            net = net.to(self.dtype)
+            output = net(torch.zeros(1, self.critic_input_dimn).to(self.dtype))
             assert output.shape[1] == 1, (
                    "Output dimension should be 1.")
             self.critic_net = net
         except:
-            print("Critic network should be single precision "
-                  "with input dimension {}.".format(self.critic_input_dimn))
+            print("Critic network should has "
+                  "input dimension {}.".format(self.critic_input_dimn))
         self.critic_optimizer = optimizer
         self.update = 0
 
@@ -362,7 +377,7 @@ class PGsOED(SOED):
         begin = self.n_stage + (self.n_stage - 1) * self.n_design
         end = begin + np.prod(ys_hist.shape[1:])
         X[:, begin:end] = ys_hist.reshape(len(ys_hist), end - begin)
-        X = torch.from_numpy(X).float()
+        X = torch.from_numpy(X).to(self.dtype)
         return X
 
     def form_critic_input(self, stage, ds_hist, ys_hist, ds):
@@ -385,11 +400,11 @@ class PGsOED(SOED):
         A torch.Tensor of size (n_traj, critic_input_dimn).
         """
         n_traj = max(len(ds_hist), len(ys_hist))
-        X = torch.zeros(n_traj, self.critic_input_dimn).float()
+        X = torch.zeros(n_traj, self.critic_input_dimn).to(self.dtype)
         X[:, :self.actor_input_dimn] = self.form_actor_input(stage, 
                                                              ds_hist, 
                                                              ys_hist)
-        X[:, -self.n_design:] = torch.from_numpy(ds).float()
+        X[:, -self.n_design:] = torch.from_numpy(ds).to(self.dtype)
         return X
 
     def get_designs(self, stage=0, ds_hist=None, ys_hist=None):
@@ -576,12 +591,12 @@ class PGsOED(SOED):
             # Form the inputs and target values of critic network, and form the 
             # inputs of the actor network.
             X_critic = torch.zeros(self.n_stage * n_traj, 
-                                   self.critic_input_dimn).float()
+                                   self.critic_input_dimn).to(self.dtype)
             X_actor = torch.zeros(self.n_stage * n_traj,
-                                  self.actor_input_dimn).float()
+                                  self.actor_input_dimn).to(self.dtype)
             if not on_policy:
                 X_critic_off = torch.zeros_like(X_critic)
-            g_critic = torch.zeros(self.n_stage * n_traj, 1).float()
+            g_critic = torch.zeros(self.n_stage * n_traj, 1).to(self.dtype)
             for k in range(self.n_stage):
                 begin = k * n_traj
                 end = (k + 1) * n_traj
@@ -602,11 +617,11 @@ class PGsOED(SOED):
                     X_critic_off[begin:end] = X
                 if k == self.n_stage - 1:
                     g_critic[begin:end, 0] = torch.from_numpy(
-                        self.rewards_hist[:, k:].sum(-1)).float()
+                        self.rewards_hist[:, k:].sum(-1)).to(self.dtype)
                 else:
                     if l < 20:
                         g_critic[begin:end, 0] = torch.from_numpy(
-                        self.rewards_hist[:, k:].sum(-1)).float()
+                        self.rewards_hist[:, k:].sum(-1)).to(self.dtype)
                     else:
                         if on_policy:
                             ds_next = self.ds_hist[:, k + 1]
@@ -617,7 +632,8 @@ class PGsOED(SOED):
                             self.ys_hist[:, :k + 1],
                             ds_next)
                         g_critic[begin:end, 0] = torch.from_numpy(
-                            self.rewards_hist[:, k] + next_action_value).float()
+                            self.rewards_hist[:, k] + 
+                            next_action_value).to(self.dtype)
             # Train critic.
             # print(X_critic)
             # print(g_critic)
