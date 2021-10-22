@@ -167,7 +167,7 @@ class PGsOED(SOED):
     form_critic_input()
         Form the inputs of critic network.
     get_designs()
-        Get the design given sequences of historical designs and observations 
+        Get designs given sequences of historical designs and observations 
         by running the actor network.
     get_design()
         Get a single design given a sequence of historical designs and 
