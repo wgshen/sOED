@@ -56,12 +56,12 @@ class PGsOED(SOED):
                 Mean for normal, or left bound for uniform.
             * prior_scale : float or int
                 Std for normal, or range for uniform.
-    design_cons : list, tuple or numpy.ndarray of size (n_design, 2)
+    design_bounds : list, tuple or numpy.ndarray of size (n_design, 2)
         It includes the constraints of the design variable. In this version, we
         only allow to set hard limit constraints. In the future version, we may
         allow users to provide their own constraint function.
-        The length of design_cons should be n_design.
-        k-th entry of design_cons is a list, tuple or numpy.ndarray like 
+        The length of design_bounds should be n_design.
+        k-th entry of design_bounds is a list, tuple or numpy.ndarray like 
         (lower_bound, upper_bound) for the limits of k-th design variable.
     noise_info : list, tuple or numpy.ndarray of size (n_obs, 3)
         It includes the statistics of additive Gaussian noise.
@@ -75,7 +75,7 @@ class PGsOED(SOED):
         The corresponding noise will follow a gaussian distribution with mean
         noise_loc, std (noise_base_scale + noise_ratio_scale * abs(G)).
     reward_fun : function, optional(default=None)
-        User-provided Non-KL-divergence based reward function 
+        User-provided non-KL-divergence based reward function 
         g_k(x_k, d_k, y_k). It will be abbreviated as nlkd_rw_f inside this 
         class.
         The reward function should take following inputs:
@@ -197,12 +197,12 @@ class PGsOED(SOED):
     """
     def __init__(self, model_fun, 
                  n_stage, n_param, n_design, n_obs, 
-                 prior_info, design_cons, noise_info, 
+                 prior_info, design_bounds, noise_info, 
                  reward_fun=None, phys_state_info=None,
                  n_grid=50, post_rvs_method="MCMC", random_state=None,
                  actor_dimns=None, critic_dimns=None):
         super().__init__(model_fun, n_stage, n_param, n_design, n_obs, 
-                         prior_info, design_cons, noise_info, 
+                         prior_info, design_bounds, noise_info, 
                          reward_fun, phys_state_info,
                          n_grid, post_rvs_method, random_state)
         if random_state is None:
@@ -247,7 +247,7 @@ class PGsOED(SOED):
         actor_dimns = np.append(np.append(self.actor_input_dimn, 
                                           actor_dimns), 
                                 output_dimn)
-        self.actor_net = Net(actor_dimns, nn.ReLU(), self.design_cons)
+        self.actor_net = Net(actor_dimns, nn.ReLU(), self.design_bounds)
         self.update = 0
         self.actor_optimizer = None
         self.actor_lr_scheduler = None
@@ -560,8 +560,8 @@ class PGsOED(SOED):
             self.critic_lr_scheduler = critic_lr_scheduler
         if design_noise_scale is None:
             if self.design_noise_scale is None:
-                self.design_noise_scale = (self.design_cons[:, 1] - 
-                                           self.design_cons[:, 0]) / 20
+                self.design_noise_scale = (self.design_bounds[:, 1] - 
+                                           self.design_bounds[:, 0]) / 20
                 self.design_noise_scale[self.design_noise_scale == np.inf] = 5
         elif isinstance(design_noise_scale, (list, tuple)):
             self.design_noise_scale = np.array(design_noise_scale)
@@ -734,8 +734,8 @@ class PGsOED(SOED):
                 # Add design noise for exploration.
                 ds = np.random.normal(loc=dcs,
                                       scale=design_noise_scale)
-                ds = np.maximum(ds, self.design_cons[:, 0])
-                ds = np.minimum(ds, self.design_cons[:, 1])
+                ds = np.maximum(ds, self.design_bounds[:, 0])
+                ds = np.minimum(ds, self.design_bounds[:, 1])
                 ds_hist[:, k, :] = ds
                 # Run the forward model to get observations.
                 Gs = self.m_f(k, 

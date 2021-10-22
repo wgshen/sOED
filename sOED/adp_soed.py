@@ -61,12 +61,12 @@ class ADPsOED(SOED):
                 Mean for normal, or left bound for uniform.
             * prior_scale : float or int
                 Std for normal, or range for uniform.
-    design_cons : list, tuple or numpy.ndarray of size (n_design, 2)
+    design_bounds : list, tuple or numpy.ndarray of size (n_design, 2)
         It includes the constraints of the design variable. In this version, we
         only allow to set hard limit constraints. In the future version, we may
         allow users to provide their own constraint function.
-        The length of design_cons should be n_design.
-        k-th entry of design_cons is a list, tuple or numpy.ndarray like 
+        The length of design_bounds should be n_design.
+        k-th entry of design_bounds is a list, tuple or numpy.ndarray like 
         (lower_bound, upper_bound) for the limits of k-th design variable.
     noise_info : list, tuple or numpy.ndarray of size (n_obs, 3)
         It includes the statistics of additive Gaussian noise.
@@ -80,7 +80,7 @@ class ADPsOED(SOED):
         The corresponding noise will follow a gaussian distribution with mean
         noise_loc, std (noise_base_scale + noise_ratio_scale * abs(G)).
     reward_fun : function, optional(default=None)
-        User-provided Non-KL-divergence based reward function 
+        User-provided non-KL-divergence based reward function 
         g_k(x_k, d_k, y_k). It will be abbreviated as nlkd_rw_f inside this 
         class.
         The reward function should take following inputs:
@@ -198,12 +198,12 @@ class ADPsOED(SOED):
     """
     def __init__(self, model_fun, 
                  n_stage, n_param, n_design, n_obs, 
-                 prior_info, design_cons, noise_info, 
+                 prior_info, design_bounds, noise_info, 
                  reward_fun=None, phys_state_info=None,
                  n_grid=50, post_rvs_method="MCMC", random_state=None,
                  n_basic_feature=2, n_degree=2):
         super().__init__(model_fun, n_stage, n_param, n_design, n_obs, 
-                         prior_info, design_cons, noise_info, 
+                         prior_info, design_bounds, noise_info, 
                          reward_fun, phys_state_info,
                          n_grid, post_rvs_method, random_state)
         assert n_param == 1, "This code only works for 1D parameter space."
@@ -389,7 +389,7 @@ class ADPsOED(SOED):
         # We only consider 1D design space and thus use brute force here.
         assert self.n_design == 1
         max_iter = 3
-        d_lim = np.copy(self.design_cons).reshape(-1)
+        d_lim = np.copy(self.design_bounds).reshape(-1)
         for i in range(max_iter):
             n_search = 60 if i == 0 else 10
             interval = (d_lim[1] - d_lim[0]) / (n_search - 1)
@@ -403,9 +403,9 @@ class ADPsOED(SOED):
                 U_search[j] = objective(np.array(d_search[j]))
             d_opt = d_search[np.argmax(U_search)]
             d_lim = np.array([max(d_opt - interval / 2, 
-                                  self.design_cons[0, 0]),
+                                  self.design_bounds[0, 0]),
                               min(d_opt + interval / 2, 
-                                  self.design_cons[0, 1])])
+                                  self.design_bounds[0, 1])])
         return np.array([d_opt]), max(U_search)
 
     def get_design(self, stage, d_hist, y_hist, 
@@ -529,8 +529,8 @@ class ADPsOED(SOED):
                 # Get design.
                 if is_explore:
                     # Exploration.
-                    d = np.random.uniform(low=self.design_cons[:, 0],
-                                          high=self.design_cons[:, 1])
+                    d = np.random.uniform(low=self.design_bounds[:, 0],
+                                          high=self.design_bounds[:, 1])
                 else:
                     # Exploitation.
                     d, _ = self.get_design(k, ds_hist[i, :i], ys_hist[i, :i],

@@ -28,7 +28,7 @@ def uniform_pdf(x, low=0, high=1):
 
 # Construct neural network
 class Net(nn.Module):
-    def __init__(self, dimns, activate, cons):
+    def __init__(self, dimns, activate, bounds):
         super().__init__()
         layers = []
         for i in range(len(dimns) - 1):
@@ -36,15 +36,15 @@ class Net(nn.Module):
             if i < len(dimns) - 2:
                 layers.append(activate)
         self.net = nn.Sequential(*layers)
-        self.cons = torch.from_numpy(cons)
-        self.has_inf = torch.isinf(self.cons).sum()
+        self.bounds = torch.from_numpy(bounds)
+        self.has_inf = torch.isinf(self.bounds).sum()
 
     def forward(self, x):
         x = self.net(x)
         if self.has_inf:
-            x = torch.maximum(x, self.cons[:, 0])
-            x = torch.minimum(x, self.cons[:, 1])
+            x = torch.maximum(x, self.bounds[:, 0])
+            x = torch.minimum(x, self.bounds[:, 1])
         else:
-            x = (torch.sigmoid(x) * (self.cons[:, 1] - 
-                                     self.cons[:, 0]) + self.cons[:, 0])
+            x = (torch.sigmoid(x) * (self.bounds[:, 1] - 
+                                     self.bounds[:, 0]) + self.bounds[:, 0])
         return x

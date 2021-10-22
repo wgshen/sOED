@@ -16,7 +16,7 @@ class SOED(object):
     the representation of belief state, the optimization method, the choice
     of features, and the way to estimate the expectation); nevertheless, the 
     performance should be similar.
-    This code accomodates continuous unknown parameters with normal or uniform 
+    This code accommodates continuous unknown parameters with normal or uniform 
     prior, continuous design with upper and lower bounds, and additive Gaussian 
     noise on observations.
 
@@ -64,12 +64,12 @@ class SOED(object):
                 Mean for normal, or left bound for uniform.
             * prior_scale : float or int
                 Std for normal, or range for uniform.
-    design_cons : list, tuple or numpy.ndarray of size (n_design, 2)
+    design_bounds : list, tuple or numpy.ndarray of size (n_design, 2)
         It includes the constraints of the design variable. In this version, we
         only allow to set hard limit constraints. In the future version, we may
         allow users to provide their own constraint function.
-        The length of design_cons should be n_design.
-        k-th entry of design_cons is a list, tuple or numpy.ndarray like 
+        The length of design_bounds should be n_design.
+        k-th entry of design_bounds is a list, tuple or numpy.ndarray like 
         (lower_bound, upper_bound) for the limits of k-th design variable.
     noise_info : list, tuple or numpy.ndarray of size (n_obs, 3)
         It includes the statistics of additive Gaussian noise.
@@ -83,7 +83,7 @@ class SOED(object):
         The corresponding noise will follow a gaussian distribution with mean
         noise_loc, std (noise_base_scale + noise_ratio_scale * abs(G)).
     reward_fun : function, optional(default=None)
-        User-provided Non-KL-divergence based reward function 
+        User-provided non-KL-divergence based reward function 
         g_k(x_k, d_k, y_k). It will be abbreviated as nlkd_rw_f inside this 
         class.
         The reward function should take following inputs:
@@ -184,7 +184,7 @@ class SOED(object):
     """
     def __init__(self, model_fun, 
                  n_stage, n_param, n_design, n_obs, 
-                 prior_info, design_cons, noise_info, 
+                 prior_info, design_bounds, noise_info, 
                  reward_fun=None, phys_state_info=None,
                  n_grid=50, post_rvs_method="MCMC", random_state=None):
         NoneType = type(None)
@@ -279,22 +279,22 @@ class SOED(object):
                                              uniform_highs, normal_idxs,
                                              normal_locs, normal_scales)
 
-        assert isinstance(design_cons, (list, tuple, np.ndarray)), (
-               "design_cons should be a list, tuple or numpy.ndarray of " 
+        assert isinstance(design_bounds, (list, tuple, np.ndarray)), (
+               "design_bounds should be a list, tuple or numpy.ndarray of " 
                "size (n_design, 2).")
-        assert len(design_cons) == n_design, (
-               "Length of design_cons should equal n_design.")
+        assert len(design_bounds) == n_design, (
+               "Length of design_bounds should equal n_design.")
         for i in range(n_design):
-            assert len(design_cons[i]) == 2, (
+            assert len(design_bounds[i]) == 2, (
                    "Each entry of prior_info is of size 2, including "
                    "lower bound and upper bound.")
-            l_b, u_b = design_cons[i]
+            l_b, u_b = design_bounds[i]
             assert isinstance(l_b, (int, float)), (
                    "{}-th lower bound should be a number.".format(i))
             assert isinstance(u_b, (int, float)), (
                    "{}-th upper_bound should be a number.".format(i))
         # size (n_design, 2)
-        self.design_cons = np.array(design_cons)
+        self.design_bounds = np.array(design_bounds)
 
         assert isinstance(noise_info, (list, tuple, np.ndarray)), (
                "noise_info should be a list, tuple or numpy.ndarray of " 
@@ -371,7 +371,6 @@ class SOED(object):
                                             normal_locs + 5 * normal_scales]
         # Initial belief state.
         self.init_xb = self.get_xb(None)
-        return
     
     def post_logpdf(self, thetas, 
                     stage=0, d_hist=None, y_hist=None, 
@@ -379,8 +378,8 @@ class SOED(object):
                     include_prior=True):
         """
         A function to compute the log-probability of unnormalized posterior  
-        after observing a sequence of observations 'y_hist' by conducting 
-        experiments under designs 'd_hist' starting from stage "stage" with 
+        after observing a sequence of observations "y_hist" by conducting 
+        experiments under designs "d_hist" starting from stage "stage" with 
         intial physical state "xp".
         If "xp_hist" is provided, then we don't need to run the physical state 
         function in this function.
@@ -510,8 +509,8 @@ class SOED(object):
                normalize=True):
         """
         A function to update the belief state (PDFs on grid discritization) 
-        after observing a sequence of observations 'y_hist' by conducting 
-        experiments under designs 'd_hist' starting from stage "stage" with 
+        after observing a sequence of observations "y_hist" by conducting 
+        experiments under designs "d_hist" starting from stage "stage" with 
         intial physical state "xp".
         If "xp_hist" is provided, then we don't need to run the physical state 
         function in this function.
