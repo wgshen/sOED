@@ -550,7 +550,9 @@ class SOED(object):
                                        self.n_grid)
             dgrid = np.prod(grids[:, 1] - grids[:, 0])
             self.dgrid = dgrid
-            xb = np.array(np.meshgrid(*grids, indexing='ij')).T
+            # xb = np.array(np.meshgrid(*grids, indexing='ij')).T
+            xb = np.stack((np.meshgrid(*grids, indexing='ij')), 
+                axis=self.n_param)
             xb = xb.reshape((self.n_grid ** self.n_param, self.n_param))
             xb = np.c_[xb, self.prior_pdf(xb)]
         new_xb = np.copy(xb)
